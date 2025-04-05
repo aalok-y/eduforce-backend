@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          Int          @id @default(autoincrement())
+  email       String       @unique
+  name        String?
+  createdAt   DateTime     @default(now())
+  assessments Assessment[]
+}
+
+model Subject {
+  id         Int          @id @default(autoincrement())
+  name       String       @unique
+  chapters   Chapter[]
+  Assessment Assessment[]
+}
+
+model Chapter {
+  id        Int        @id @default(autoincrement())
+  name      String
+  subject   Subject    @relation(fields: [subjectId], references: [id])
+  subjectId Int
+  questions Question[]
+}
+
+model Tag {
+  id        Int               @id @default(autoincrement())
+  name      String            @unique
+  questions QuestionsOnTags[]
+}
+
+model QuestionsOnTags {
+  questionId Int
+  tagId      Int
+  question   Question @relation(fields: [questionId], references: [id])
+  tag        Tag      @relation(fields: [tagId], references: [id])
+
+  @@id([questionId, tagId])
+}
+
+enum Difficulty {
+  easy
+  medium
+  hard
+}
+
+model Question {
+  id            Int               @id @default(autoincrement())
+  text          String
+  option1       String
+  option2       String
+  option3       String
+  option4       String
+  correctOption Int
+  difficulty    Difficulty
+  chapter       Chapter           @relation(fields: [chapterId], references: [id])
+  chapterId     Int
+  assessment    Assessment?       @relation(fields: [assessmentId], references: [id])
+  assessmentId  Int?
+  tags          QuestionsOnTags[]
+  createdAt     DateTime          @default(now())
+  answers       StudentAnswer[]
+}
+
+model Assessment {
+  id        Int             @id @default(autoincrement())
+  user      User            @relation(fields: [userId], references: [id])
+  userId    Int
+  subject   Subject         @relation(fields: [subjectId], references: [id])
+  subjectId Int
+  questions Question[]
+  createdAt DateTime        @default(now())
+  answers   StudentAnswer[]
+  report    Report?
+}
+
+model StudentAnswer {
+  id             Int        @id @default(autoincrement())
+  assessment     Assessment @relation(fields: [assessmentId], references: [id])
+  assessmentId   Int
+  question       Question   @relation(fields: [questionId], references: [id])
+  questionId     Int
+  selectedOption Int
+  isCorrect      Boolean
+  createdAt      DateTime   @default(now())
+
+  @@unique([assessmentId, questionId])
+}
+
+model Report {
+  id             Int        @id @default(autoincrement())
+  assessment     Assessment @relation(fields: [assessmentId], references: [id])
+  assessmentId   Int        @unique
+  totalQuestions Int
+  correctAnswers Int
+  accuracy       Float
+  weakTags       Json
+  createdAt      DateTime   @default(now())
+}
