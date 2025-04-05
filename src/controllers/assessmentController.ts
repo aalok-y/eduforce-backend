@@ -173,3 +173,220 @@ export const getQuestions = async (req: Request, res: Response) => {
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+
+
+export const getAssessments = async (req: Request, res: Response) => {
+  const { email } = req.query;
+  try {
+    if (!email) {
+      res.status(400).json({
+        message: "Missing userId in query parameters.",
+      });
+      return;
+    }
+    // Find the user by their email.
+    const user = await prisma.user.findUnique({
+      where: { email: email as string },
+    });
+    if (!user) {
+      res.status(404).json({ message: "User not found." });
+      return;
+    }
+
+    const assessments = await prisma.assessment.findMany({
+      where: {
+        userId: user.id,
+      },
+    });
+
+    res.status(200).json({ assessments });
+  } catch (error) {
+    console.error("Error fetching assessments:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+}
+
+
+export const saveAssessment = async (req: Request, res: Response) => {
+  try {
+    // Destructure the input from the request body.
+    const { email, subject, answers } = req.body;
+
+    if (!email || !subject || !answers || !Array.isArray(answers)) {
+      res.status(400).json({
+        message: "Missing required fields: email, subject, and answers (as an array)."
+      });
+      return;
+    }
+
+    // Validate that the user exists by email.
+    const userRecord = await prisma.user.findUnique({
+      where: { email }
+    });
+    if (!userRecord) {
+      res.status(404).json({ message: "User not found." });
+      return;
+    }
+
+    // Validate that the subject exists.
+    const subjectRecord = await prisma.subject.findUnique({
+      where: { name: subject },
+    });
+    if (!subjectRecord) {
+      res.status(404).json({ message: "Subject not found." });
+      return;
+    }
+
+    // Create the Assessment record.
+    const assessment = await prisma.assessment.create({
+      data: {
+        userId: userRecord.id,
+        subjectId: subjectRecord.id,
+      }
+    });
+
+    // Process each answer and create a StudentAnswer record.
+    for (const ans of answers) {
+      const { questionId, selectedOption } = ans;
+
+      // Retrieve the question to determine if the answer is correct.
+      const questionRecord = await prisma.question.findUnique({
+        where: { id: questionId },
+      });
+      if (!questionRecord) {
+        // If the question doesn't exist, skip this answer.
+        continue;
+      }
+
+      const isCorrect = questionRecord.correctOption === selectedOption;
+
+      await prisma.studentAnswer.create({
+        data: {
+          assessmentId: assessment.id,
+          questionId: questionId,
+          selectedOption: selectedOption,
+          isCorrect: isCorrect,
+        }
+      });
+    }
+
+    // Re-fetch all student answers for the assessment including question tags.
+    const studentAnswersForReport = await prisma.studentAnswer.findMany({
+      where: { assessmentId: assessment.id },
+      include: {
+        question: {
+          include: {
+            tags: {
+              include: {
+                tag: true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    const totalQuestions = studentAnswersForReport.length;
+    const correctAnswers = studentAnswersForReport.filter(ans => ans.isCorrect).length;
+    const accuracy = totalQuestions > 0 ? (correctAnswers / totalQuestions) * 100 : 0;
+
+    // Calculate weak topics by aggregating tags from incorrectly answered questions.
+    const weakTagsMap: Record<string, number> = {};
+    studentAnswersForReport
+      .filter(ans => !ans.isCorrect)
+      .forEach(ans => {
+        ans.question.tags.forEach(qt => {
+          const tagName = qt.tag.name;
+          weakTagsMap[tagName] = (weakTagsMap[tagName] || 0) + 1;
+        });
+      });
+
+    // Create the Report record.
+    const report = await prisma.report.create({
+      data: {
+        assessmentId: assessment.id,
+        totalQuestions,
+        correctAnswers,
+        accuracy,
+        weakTags: weakTagsMap, // stored as JSON
+      }
+    });
+
+    res.status(201).json({
+      message: "Assessment and report saved successfully.",
+      assessmentId: assessment.id,
+      reportId: report.id,
+    });
+  } catch (error) {
+    console.error("Error saving assessment:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const getReport = async (req: Request, res: Response) => {
+  const { assessmentId } = req.query;
+
+  if (!assessmentId) {
+    res.status(400).json({ message: "assessmentId query parameter is required." });
+    return;
+  }
+
+  const assessmentIdNum = Number(assessmentId);
+  if (isNaN(assessmentIdNum)) {
+    res.status(400).json({ message: "Invalid assessmentId provided." });
+    return;
+  }
+
+  try {
+    // Fetch summary report from Report table
+    const summaryReport = await prisma.report.findUnique({
+      where: { assessmentId: assessmentIdNum },
+    });
+
+    if (!summaryReport) {
+      res.status(404).json({ message: "No report found for this assessment." });
+      return;
+    }
+
+    // Fetch detailed answers including question details and options
+    const detailedAnswers = await prisma.studentAnswer.findMany({
+      where: { assessmentId: assessmentIdNum },
+      include: {
+        question: {
+          include: {
+            tags: {
+              include: { tag: true },
+            },
+          },
+        },
+      },
+    });
+
+    // Map detailed answers to a consumable format
+    const answers = detailedAnswers.map(ans => ({
+      questionId: ans.question.id,
+      question: ans.question.text,
+      options: {
+        option1: ans.question.option1,
+        option2: ans.question.option2,
+        option3: ans.question.option3,
+        option4: ans.question.option4,
+      },
+      correctOption: ans.question.correctOption,
+      selectedOption: ans.selectedOption,
+      isCorrect: ans.isCorrect,
+      // Optionally include tags if needed:
+      tags: ans.question.tags.map(qt => qt.tag.name)
+    }));
+
+    res.status(200).json({
+      assessmentId: assessmentIdNum,
+      summary: summaryReport,
+      answers,
+    });
+  } catch (error) {
+    console.error("Error fetching report:", error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};

@@ -3,6 +3,7 @@ import cors from "cors";
 import { clerkMiddleware, clerkClient,requireAuth } from '@clerk/express'
 import 'dotenv/config'
 import assessmentRoutes from "./routes/assessmentRoutes";
+import userRoutes from "./routes/userRoutes";
 
 const app = express();
 
@@ -55,6 +56,7 @@ app.get('/protected', async (req: Request, res: Response): Promise<void> => {
 });
 
 app.use('/api',assessmentRoutes);
+app.use('/api',userRoutes);
 
 app.listen(port,()=>{
     console.info("Server Started at :",port);

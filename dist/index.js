@@ -17,6 +17,7 @@ const cors_1 = __importDefault(require("cors"));
 const express_2 = require("@clerk/express");
 require("dotenv/config");
 const assessmentRoutes_1 = __importDefault(require("./routes/assessmentRoutes"));
+const userRoutes_1 = __importDefault(require("./routes/userRoutes"));
 const app = (0, express_1.default)();
 const port = process.env.PORT || 5000;
 app.use(express_1.default.json());
@@ -58,6 +59,7 @@ app.get('/protected', (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 }));
 app.use('/api', assessmentRoutes_1.default);
+app.use('/api', userRoutes_1.default);
 app.listen(port, () => {
     console.info("Server Started at :", port);
 });
