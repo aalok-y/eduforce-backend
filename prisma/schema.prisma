@@ -10,6 +10,7 @@ datasource db {
 model User {
   id          Int          @id @default(autoincrement())
   email       String       @unique
+  password    String       @default("123")
   name        String?
   createdAt   DateTime     @default(now())
   assessments Assessment[]
@@ -53,6 +54,7 @@ enum Difficulty {
 
 model Question {
   id            Int               @id @default(autoincrement())
+  set           Int               @default(1)
   text          String
   option1       String
   option2       String

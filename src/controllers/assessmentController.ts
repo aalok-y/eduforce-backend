@@ -17,25 +17,121 @@ interface QuestionSet {
   questions: Question[];
 }
 
+// export const saveQuestions = async (req: Request, res: Response) => {
+//   const questionsInput = req.body;
+
+//   if (
+//     !questionsInput ||
+//     !questionsInput.questions ||
+//     questionsInput.questions.length === 0
+//   ) {
+//     res.status(400).json({
+//         message: "No Questions Found",
+//       });
+//     return;
+//   }
+
+//   const {
+//     subject,
+//     chapter,
+//     questions: questionSet,
+//   } = questionsInput as QuestionSet;
+
+//   try {
+//     // 1. Upsert Subject
+//     const subjectRecord = await prisma.subject.upsert({
+//       where: { name: subject },
+//       update: {},
+//       create: { name: subject },
+//     });
+
+//     // 2. Upsert or Create Chapter
+//     let chapterRecord = await prisma.chapter.findFirst({
+//       where: {
+//         name: chapter,
+//         subjectId: subjectRecord.id,
+//       },
+//     });
+
+//     if (!chapterRecord) {
+//       chapterRecord = await prisma.chapter.create({
+//         data: {
+//           name: chapter,
+//           subjectId: subjectRecord.id,
+//         },
+//       });
+//     }
+
+    
+    
+
+//     // 4. Process each question
+//     const createdQuestions = [];
+//     for (const q of questionSet) {
+//       // Create the question record.
+//       const newQuestion = await prisma.question.create({
+//         data: {
+//           text: q.question,
+//           option1: q.option1,
+//           option2: q.option2,
+//           option3: q.option3,
+//           option4: q.option4,
+//           correctOption: q.correctOption,
+//           difficulty: q.difficulty,
+//           chapterId: chapterRecord.id,
+//         },
+//       });
+
+//       // Process tags for this question.
+//       for (const tagName of q.tags) {
+//         const tagRecord = await prisma.tag.upsert({
+//           where: { name: tagName },
+//           update: {},
+//           create: { name: tagName },
+//         });
+
+//         await prisma.questionsOnTags.create({
+//           data: {
+//             questionId: newQuestion.id,
+//             tagId: tagRecord.id,
+//           },
+//         });
+//       }
+
+//       createdQuestions.push(newQuestion);
+//     }
+
+//     res.status(201).json({
+//         message: "Questions saved successfully",
+//         questions: createdQuestions,
+//       });
+//     return;
+//   } catch (error) {
+//     console.error("Error saving questions:", error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//     return;
+//   }
+// };
+
 export const saveQuestions = async (req: Request, res: Response) => {
   const questionsInput = req.body;
 
+  // Validate that required fields are provided.
   if (
     !questionsInput ||
-    !questionsInput.questions ||
-    questionsInput.questions.length === 0
+    !questionsInput.subject ||
+    !questionsInput.chapter ||
+    !questionsInput.sets ||
+    !Array.isArray(questionsInput.sets) ||
+    questionsInput.sets.length === 0
   ) {
     res.status(400).json({
-        message: "No Questions Found",
-      });
+      message: "Invalid input. Please provide subject, chapter, and at least one set with questions.",
+    });
     return;
   }
 
-  const {
-    subject,
-    chapter,
-    questions: questionSet,
-  } = questionsInput as QuestionSet;
+  const { subject, chapter, sets } = questionsInput;
 
   try {
     // 1. Upsert Subject
@@ -62,66 +158,66 @@ export const saveQuestions = async (req: Request, res: Response) => {
       });
     }
 
-    // 3. Create a new Assessment for this question set.
-    // Make sure ADMIN_USER_ID is set in your environment variables.
-    
-
-    // 4. Process each question
     const createdQuestions = [];
-    for (const q of questionSet) {
-      // Create the question record.
-      const newQuestion = await prisma.question.create({
-        data: {
-          text: q.question,
-          option1: q.option1,
-          option2: q.option2,
-          option3: q.option3,
-          option4: q.option4,
-          correctOption: q.correctOption,
-          difficulty: q.difficulty,
-          chapterId: chapterRecord.id,
-        },
-      });
-
-      // Process tags for this question.
-      for (const tagName of q.tags) {
-        const tagRecord = await prisma.tag.upsert({
-          where: { name: tagName },
-          update: {},
-          create: { name: tagName },
-        });
-
-        await prisma.questionsOnTags.create({
+    // 3. Process each set
+    for (const set of sets) {
+      for (const q of set.questions) {
+        // Create the question record.
+        // The "set" field is set to the set_id from the incoming request.
+        const newQuestion = await prisma.question.create({
           data: {
-            questionId: newQuestion.id,
-            tagId: tagRecord.id,
+            text: q.question,
+            option1: q.option1,
+            option2: q.option2,
+            option3: q.option3,
+            option4: q.option4,
+            correctOption: q.correctOption,
+            difficulty: q.difficulty,
+            chapterId: chapterRecord.id,
+            // No assessment created, so leave assessmentId as null
+            set: set.set_id,
           },
         });
-      }
 
-      createdQuestions.push(newQuestion);
+        // Process tags for this question.
+        for (const tagName of q.tags) {
+          const tagRecord = await prisma.tag.upsert({
+            where: { name: tagName },
+            update: {},
+            create: { name: tagName },
+          });
+
+          await prisma.questionsOnTags.create({
+            data: {
+              questionId: newQuestion.id,
+              tagId: tagRecord.id,
+            },
+          });
+        }
+
+        createdQuestions.push(newQuestion);
+      }
     }
 
     res.status(201).json({
-        message: "Questions saved successfully",
-        questions: createdQuestions,
-      });
-    return;
+      message: "Questions saved successfully",
+      questions: createdQuestions,
+    });
   } catch (error) {
     console.error("Error saving questions:", error);
     res.status(500).json({ message: "Internal Server Error" });
-    return;
   }
 };
 
 
+
 export const getQuestions = async (req: Request, res: Response) => {
-  const { subject, chapter, difficulty } = req.query;
+  const { subject, chapter, difficulty, set } = req.query;
 
   try {
-    if (!subject || !chapter || !difficulty) {
+    if (!subject || !chapter || !difficulty || !set) {
       res.status(400).json({
-        message: "Missing subject, chapter, or difficulty in query parameters.",
+        message: "Missing subject, chapter, difficulty, or set in query parameters.",
       });
       return; 
     }
@@ -133,7 +229,7 @@ export const getQuestions = async (req: Request, res: Response) => {
 
     if (!subjectRecord) {
       res.status(404).json({ message: "Subject not found." });
-      return ;
+      return;
     }
 
     // Find the chapter under that subject.
@@ -149,13 +245,12 @@ export const getQuestions = async (req: Request, res: Response) => {
       return;
     }
 
-    // Fetch questions in the chapter with the specified difficulty.
-    // Since 'difficulty' is defined as an enum in your Prisma schema,
-    // we cast the query param to the corresponding union type.
+    // Fetch questions in the chapter with the specified difficulty and set.
     const questions = await prisma.question.findMany({
       where: {
         chapterId: chapterRecord.id,
         difficulty: difficulty as "easy" | "medium" | "hard",
+        set: Number(set),
       },
       // Include the related tags by including the join table and then the tag itself.
       include: {
@@ -181,10 +276,11 @@ export const getAssessments = async (req: Request, res: Response) => {
   try {
     if (!email) {
       res.status(400).json({
-        message: "Missing userId in query parameters.",
+        message: "Missing email in query parameters.",
       });
       return;
     }
+
     // Find the user by their email.
     const user = await prisma.user.findUnique({
       where: { email: email as string },
@@ -198,6 +294,38 @@ export const getAssessments = async (req: Request, res: Response) => {
       where: {
         userId: user.id,
       },
+      include: {
+        subject: {
+          select: { name: true },
+        },
+        questions: {
+          include: {
+            chapter: {
+              select: { name: true },
+            },
+          },
+        },
+        answers: {
+          include: {
+            question: {
+              select: {
+                id: true,
+                text: true,
+                option1: true,
+                option2: true,
+                option3: true,
+                option4: true,
+                correctOption: true,
+                difficulty: true,
+                set: true,
+                chapter: {
+                  select: { name: true },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     res.status(200).json({ assessments });
@@ -205,7 +333,9 @@ export const getAssessments = async (req: Request, res: Response) => {
     console.error("Error fetching assessments:", error);
     res.status(500).json({ message: "Internal Server Error" });
   }
-}
+};
+
+
 
 
 export const saveAssessment = async (req: Request, res: Response) => {
@@ -388,5 +518,52 @@ export const getReport = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching report:", error);
     res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const getSubjects = async (req: Request, res: Response): Promise<void> => {
+  try {
+    // Fetch all subjects along with their chapters.
+    const subjects = await prisma.subject.findMany({
+      include: {
+        chapters: true,
+      },
+    });
+
+    // For each chapter, we need to fetch distinct set numbers from questions.
+    // Then sort the chapters using the smallest (first) set number.
+    const subjectsWithSetNumbers = await Promise.all(
+      subjects.map(async (subject) => {
+        const chaptersWithSet = await Promise.all(
+          subject.chapters.map(async (chapter) => {
+            // Group questions by the "set" field for the current chapter.
+            const setNumbersRecords = await prisma.question.groupBy({
+              by: ['set'],
+              where: { chapterId: chapter.id },
+              orderBy: { set: 'asc' },
+            });
+            // Extract the set numbers.
+            const setNumbers = setNumbersRecords.map((record) => record.set);
+            // Augment chapter with an extra property "setNumbers".
+            return { ...chapter, setNumbers };
+          })
+        );
+
+        // Sort chapters based on the smallest set number.
+        // If a chapter has no questions, we place it at the beginning (or adjust as needed).
+        chaptersWithSet.sort((a, b) => {
+          const aMinSet = a.setNumbers[0] || 0;
+          const bMinSet = b.setNumbers[0] || 0;
+          return aMinSet - bMinSet;
+        });
+
+        return { ...subject, chapters: chaptersWithSet };
+      })
+    );
+
+    res.json(subjectsWithSetNumbers);
+  } catch (error) {
+    console.error("Error fetching subjects:", error);
+    res.status(500).json({ message: "Error fetching subjects" });
   }
 };

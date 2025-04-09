@@ -9,19 +9,105 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getReport = exports.saveAssessment = exports.getAssessments = exports.getQuestions = exports.saveQuestions = void 0;
+exports.getSubjects = exports.getReport = exports.saveAssessment = exports.getAssessments = exports.getQuestions = exports.saveQuestions = void 0;
 const utils_1 = require("../utils");
+// export const saveQuestions = async (req: Request, res: Response) => {
+//   const questionsInput = req.body;
+//   if (
+//     !questionsInput ||
+//     !questionsInput.questions ||
+//     questionsInput.questions.length === 0
+//   ) {
+//     res.status(400).json({
+//         message: "No Questions Found",
+//       });
+//     return;
+//   }
+//   const {
+//     subject,
+//     chapter,
+//     questions: questionSet,
+//   } = questionsInput as QuestionSet;
+//   try {
+//     // 1. Upsert Subject
+//     const subjectRecord = await prisma.subject.upsert({
+//       where: { name: subject },
+//       update: {},
+//       create: { name: subject },
+//     });
+//     // 2. Upsert or Create Chapter
+//     let chapterRecord = await prisma.chapter.findFirst({
+//       where: {
+//         name: chapter,
+//         subjectId: subjectRecord.id,
+//       },
+//     });
+//     if (!chapterRecord) {
+//       chapterRecord = await prisma.chapter.create({
+//         data: {
+//           name: chapter,
+//           subjectId: subjectRecord.id,
+//         },
+//       });
+//     }
+//     // 4. Process each question
+//     const createdQuestions = [];
+//     for (const q of questionSet) {
+//       // Create the question record.
+//       const newQuestion = await prisma.question.create({
+//         data: {
+//           text: q.question,
+//           option1: q.option1,
+//           option2: q.option2,
+//           option3: q.option3,
+//           option4: q.option4,
+//           correctOption: q.correctOption,
+//           difficulty: q.difficulty,
+//           chapterId: chapterRecord.id,
+//         },
+//       });
+//       // Process tags for this question.
+//       for (const tagName of q.tags) {
+//         const tagRecord = await prisma.tag.upsert({
+//           where: { name: tagName },
+//           update: {},
+//           create: { name: tagName },
+//         });
+//         await prisma.questionsOnTags.create({
+//           data: {
+//             questionId: newQuestion.id,
+//             tagId: tagRecord.id,
+//           },
+//         });
+//       }
+//       createdQuestions.push(newQuestion);
+//     }
+//     res.status(201).json({
+//         message: "Questions saved successfully",
+//         questions: createdQuestions,
+//       });
+//     return;
+//   } catch (error) {
+//     console.error("Error saving questions:", error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//     return;
+//   }
+// };
 const saveQuestions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const questionsInput = req.body;
+    // Validate that required fields are provided.
     if (!questionsInput ||
-        !questionsInput.questions ||
-        questionsInput.questions.length === 0) {
+        !questionsInput.subject ||
+        !questionsInput.chapter ||
+        !questionsInput.sets ||
+        !Array.isArray(questionsInput.sets) ||
+        questionsInput.sets.length === 0) {
         res.status(400).json({
-            message: "No Questions Found",
+            message: "Invalid input. Please provide subject, chapter, and at least one set with questions.",
         });
         return;
     }
-    const { subject, chapter, questions: questionSet, } = questionsInput;
+    const { subject, chapter, sets } = questionsInput;
     try {
         // 1. Upsert Subject
         const subjectRecord = yield utils_1.prisma.subject.upsert({
@@ -44,59 +130,60 @@ const saveQuestions = (req, res) => __awaiter(void 0, void 0, void 0, function* 
                 },
             });
         }
-        // 3. Create a new Assessment for this question set.
-        // Make sure ADMIN_USER_ID is set in your environment variables.
-        // 4. Process each question
         const createdQuestions = [];
-        for (const q of questionSet) {
-            // Create the question record.
-            const newQuestion = yield utils_1.prisma.question.create({
-                data: {
-                    text: q.question,
-                    option1: q.option1,
-                    option2: q.option2,
-                    option3: q.option3,
-                    option4: q.option4,
-                    correctOption: q.correctOption,
-                    difficulty: q.difficulty,
-                    chapterId: chapterRecord.id,
-                },
-            });
-            // Process tags for this question.
-            for (const tagName of q.tags) {
-                const tagRecord = yield utils_1.prisma.tag.upsert({
-                    where: { name: tagName },
-                    update: {},
-                    create: { name: tagName },
-                });
-                yield utils_1.prisma.questionsOnTags.create({
+        // 3. Process each set
+        for (const set of sets) {
+            for (const q of set.questions) {
+                // Create the question record.
+                // The "set" field is set to the set_id from the incoming request.
+                const newQuestion = yield utils_1.prisma.question.create({
                     data: {
-                        questionId: newQuestion.id,
-                        tagId: tagRecord.id,
+                        text: q.question,
+                        option1: q.option1,
+                        option2: q.option2,
+                        option3: q.option3,
+                        option4: q.option4,
+                        correctOption: q.correctOption,
+                        difficulty: q.difficulty,
+                        chapterId: chapterRecord.id,
+                        // No assessment created, so leave assessmentId as null
+                        set: set.set_id,
                     },
                 });
+                // Process tags for this question.
+                for (const tagName of q.tags) {
+                    const tagRecord = yield utils_1.prisma.tag.upsert({
+                        where: { name: tagName },
+                        update: {},
+                        create: { name: tagName },
+                    });
+                    yield utils_1.prisma.questionsOnTags.create({
+                        data: {
+                            questionId: newQuestion.id,
+                            tagId: tagRecord.id,
+                        },
+                    });
+                }
+                createdQuestions.push(newQuestion);
             }
-            createdQuestions.push(newQuestion);
         }
         res.status(201).json({
             message: "Questions saved successfully",
             questions: createdQuestions,
         });
-        return;
     }
     catch (error) {
         console.error("Error saving questions:", error);
         res.status(500).json({ message: "Internal Server Error" });
-        return;
     }
 });
 exports.saveQuestions = saveQuestions;
 const getQuestions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { subject, chapter, difficulty } = req.query;
+    const { subject, chapter, difficulty, set } = req.query;
     try {
-        if (!subject || !chapter || !difficulty) {
+        if (!subject || !chapter || !difficulty || !set) {
             res.status(400).json({
-                message: "Missing subject, chapter, or difficulty in query parameters.",
+                message: "Missing subject, chapter, difficulty, or set in query parameters.",
             });
             return;
         }
@@ -119,13 +206,12 @@ const getQuestions = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             res.status(404).json({ message: "Chapter not found." });
             return;
         }
-        // Fetch questions in the chapter with the specified difficulty.
-        // Since 'difficulty' is defined as an enum in your Prisma schema,
-        // we cast the query param to the corresponding union type.
+        // Fetch questions in the chapter with the specified difficulty and set.
         const questions = yield utils_1.prisma.question.findMany({
             where: {
                 chapterId: chapterRecord.id,
                 difficulty: difficulty,
+                set: Number(set),
             },
             // Include the related tags by including the join table and then the tag itself.
             include: {
@@ -149,7 +235,7 @@ const getAssessments = (req, res) => __awaiter(void 0, void 0, void 0, function*
     try {
         if (!email) {
             res.status(400).json({
-                message: "Missing userId in query parameters.",
+                message: "Missing email in query parameters.",
             });
             return;
         }
@@ -164,6 +250,38 @@ const getAssessments = (req, res) => __awaiter(void 0, void 0, void 0, function*
         const assessments = yield utils_1.prisma.assessment.findMany({
             where: {
                 userId: user.id,
+            },
+            include: {
+                subject: {
+                    select: { name: true },
+                },
+                questions: {
+                    include: {
+                        chapter: {
+                            select: { name: true },
+                        },
+                    },
+                },
+                answers: {
+                    include: {
+                        question: {
+                            select: {
+                                id: true,
+                                text: true,
+                                option1: true,
+                                option2: true,
+                                option3: true,
+                                option4: true,
+                                correctOption: true,
+                                difficulty: true,
+                                set: true,
+                                chapter: {
+                                    select: { name: true },
+                                },
+                            },
+                        },
+                    },
+                },
             },
         });
         res.status(200).json({ assessments });
@@ -339,3 +457,43 @@ const getReport = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     }
 });
 exports.getReport = getReport;
+const getSubjects = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Fetch all subjects along with their chapters.
+        const subjects = yield utils_1.prisma.subject.findMany({
+            include: {
+                chapters: true,
+            },
+        });
+        // For each chapter, we need to fetch distinct set numbers from questions.
+        // Then sort the chapters using the smallest (first) set number.
+        const subjectsWithSetNumbers = yield Promise.all(subjects.map((subject) => __awaiter(void 0, void 0, void 0, function* () {
+            const chaptersWithSet = yield Promise.all(subject.chapters.map((chapter) => __awaiter(void 0, void 0, void 0, function* () {
+                // Group questions by the "set" field for the current chapter.
+                const setNumbersRecords = yield utils_1.prisma.question.groupBy({
+                    by: ['set'],
+                    where: { chapterId: chapter.id },
+                    orderBy: { set: 'asc' },
+                });
+                // Extract the set numbers.
+                const setNumbers = setNumbersRecords.map((record) => record.set);
+                // Augment chapter with an extra property "setNumbers".
+                return Object.assign(Object.assign({}, chapter), { setNumbers });
+            })));
+            // Sort chapters based on the smallest set number.
+            // If a chapter has no questions, we place it at the beginning (or adjust as needed).
+            chaptersWithSet.sort((a, b) => {
+                const aMinSet = a.setNumbers[0] || 0;
+                const bMinSet = b.setNumbers[0] || 0;
+                return aMinSet - bMinSet;
+            });
+            return Object.assign(Object.assign({}, subject), { chapters: chaptersWithSet });
+        })));
+        res.json(subjectsWithSetNumbers);
+    }
+    catch (error) {
+        console.error("Error fetching subjects:", error);
+        res.status(500).json({ message: "Error fetching subjects" });
+    }
+});
+exports.getSubjects = getSubjects;

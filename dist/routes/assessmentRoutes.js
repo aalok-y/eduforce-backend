@@ -8,4 +8,5 @@ router.get("/questions", assessmentController_1.getQuestions);
 router.get("/assessments", assessmentController_1.getAssessments);
 router.post("/assessments", assessmentController_1.saveAssessment);
 router.get("/report", assessmentController_1.getReport);
+router.get("/subjects", assessmentController_1.getSubjects);
 exports.default = router;

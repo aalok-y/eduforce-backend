@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Question" ADD COLUMN     "set" INTEGER NOT NULL DEFAULT 1;
